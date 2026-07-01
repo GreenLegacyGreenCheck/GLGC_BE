@@ -109,7 +109,12 @@ export class DiagnosisService {
       });
       if (setting?.diagnosisAlert) {
         this.pushService
-          .sendToUser(userId, '탄소 진단 완료! 🌿', '진단 리포트가 준비됐어요.', '/report')
+          .sendToUser(
+            userId,
+            '탄소 진단 완료! 🌿',
+            '진단 리포트가 준비됐어요.',
+            '/report',
+          )
           .catch(() => {});
       }
     }

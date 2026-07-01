@@ -39,7 +39,9 @@ export class PushService {
       this.isConfigured = true;
     } else {
       this.isConfigured = false;
-      this.logger.warn('VAPID 키가 설정되지 않았습니다. 푸시 알림이 비활성화됩니다.');
+      this.logger.warn(
+        'VAPID 키가 설정되지 않았습니다. 푸시 알림이 비활성화됩니다.',
+      );
     }
   }
 
@@ -58,12 +60,7 @@ export class PushService {
     });
   }
 
-  async sendToUser(
-    userId: string,
-    title: string,
-    body: string,
-    url = '/',
-  ) {
+  async sendToUser(userId: string, title: string, body: string, url = '/') {
     if (!this.isConfigured) return;
 
     const subscriptions = await this.prisma.pushSubscription.findMany({
@@ -76,7 +73,10 @@ export class PushService {
       subscriptions.map(async (sub) => {
         try {
           await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            {
+              endpoint: sub.endpoint,
+              keys: { p256dh: sub.p256dh, auth: sub.auth },
+            },
             payload,
           );
         } catch (err: unknown) {
@@ -87,7 +87,9 @@ export class PushService {
             'statusCode' in err &&
             (err as { statusCode: number }).statusCode === 410
           ) {
-            await this.prisma.pushSubscription.delete({ where: { id: sub.id } });
+            await this.prisma.pushSubscription.delete({
+              where: { id: sub.id },
+            });
           }
         }
       }),
@@ -111,7 +113,10 @@ export class PushService {
       allSubs.map(async (sub) => {
         try {
           await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            {
+              endpoint: sub.endpoint,
+              keys: { p256dh: sub.p256dh, auth: sub.auth },
+            },
             payload,
           );
         } catch (err: unknown) {
@@ -121,7 +126,9 @@ export class PushService {
             'statusCode' in err &&
             (err as { statusCode: number }).statusCode === 410
           ) {
-            await this.prisma.pushSubscription.delete({ where: { id: sub.id } });
+            await this.prisma.pushSubscription.delete({
+              where: { id: sub.id },
+            });
           }
         }
       }),

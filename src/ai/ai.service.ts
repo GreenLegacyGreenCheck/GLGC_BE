@@ -84,7 +84,10 @@ ${actionsText}
 
 function parseAiResponse(raw: string): AiInsightOutput {
   // 마크다운 코드블록이 섞여 오는 경우 제거
-  const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+  const cleaned = raw
+    .replace(/```json\s*/g, '')
+    .replace(/```\s*/g, '')
+    .trim();
   const parsed = JSON.parse(cleaned) as Record<string, unknown>;
 
   const aiSummary =
@@ -95,8 +98,7 @@ function parseAiResponse(raw: string): AiInsightOutput {
     : [];
   const aiEvidenceBullets = rawBullets
     .filter(
-      (b): b is Record<string, unknown> =>
-        typeof b === 'object' && b !== null,
+      (b): b is Record<string, unknown> => typeof b === 'object' && b !== null,
     )
     .map((b) => ({
       text: typeof b.text === 'string' ? b.text : '',
@@ -212,10 +214,10 @@ export class AiService {
     // Gemini 먼저 시도, 실패하면 Groq(무료)으로 폴백
     try {
       raw = await this.callGemini(prompt);
-    } catch (geminiError) {
+    } catch {
       try {
         raw = await this.callGroq(prompt);
-      } catch (chatGptError) {
+      } catch {
         throw new HttpException(
           'AI 분석 서비스에 일시적으로 연결할 수 없습니다.',
           HttpStatus.BAD_GATEWAY,

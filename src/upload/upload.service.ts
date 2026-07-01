@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   GetObjectCommand,
+  type GetObjectCommandOutput,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -14,7 +15,8 @@ export class UploadService {
   private readonly bucket: string;
 
   constructor(private readonly configService: ConfigService) {
-    const region = this.configService.get<string>('AWS_REGION') ?? 'ap-northeast-2';
+    const region =
+      this.configService.get<string>('AWS_REGION') ?? 'ap-northeast-2';
     const bucket = this.configService.get<string>('AWS_S3_BUCKET_NAME');
 
     if (!bucket) {
@@ -52,10 +54,12 @@ export class UploadService {
   }
 
   // OCR 서비스가 파일 버퍼를 요구하므로 S3에서 다운로드해서 반환한다.
-  async downloadFileBuffer(key: string): Promise<{ buffer: Buffer; contentType: string }> {
+  async downloadFileBuffer(
+    key: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
 
-    let response;
+    let response: GetObjectCommandOutput;
     try {
       response = await this.s3.send(command);
     } catch {
@@ -65,8 +69,16 @@ export class UploadService {
       );
     }
 
+    const body = response.Body as AsyncIterable<Uint8Array> | undefined;
+    if (!body) {
+      throw new HttpException(
+        'S3 응답 본문이 비어 있습니다.',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+
     const chunks: Uint8Array[] = [];
-    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+    for await (const chunk of body) {
       chunks.push(chunk);
     }
 

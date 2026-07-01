@@ -54,8 +54,10 @@ export class PushController {
     if (!secret || input?.secret !== secret) {
       throw new UnauthorizedException('브로드캐스트 권한이 없습니다.');
     }
-    const title = typeof input.title === 'string' ? input.title : '🌿 GreenCheck 업데이트';
-    const bodyText = typeof input.body === 'string' ? input.body : '새 기능이 추가됐어요!';
+    const title =
+      typeof input.title === 'string' ? input.title : '🌿 GreenCheck 업데이트';
+    const bodyText =
+      typeof input.body === 'string' ? input.body : '새 기능이 추가됐어요!';
     await this.pushService.broadcastAppUpdate(title, bodyText);
     return { ok: true };
   }

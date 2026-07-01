@@ -61,9 +61,7 @@ export class OcrController {
   // ③ Presigned URL 전용 엔드포인트 (JSON body)
   @Post('bill/s3')
   @ApiBody({ schema: { example: { s3Key: 'bills/uuid.jpg' } } })
-  async recognizeBillFromS3(
-    @Body('s3Key') s3Key: string,
-  ): Promise<OcrResult> {
+  async recognizeBillFromS3(@Body('s3Key') s3Key: string): Promise<OcrResult> {
     if (!s3Key) {
       throw new BadRequestException('s3Key가 필요합니다.');
     }
