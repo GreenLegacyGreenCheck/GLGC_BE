@@ -2,6 +2,10 @@ import io
 import os
 import re
 
+os.environ['FLAGS_enable_pir_api'] = '0'
+os.environ['FLAGS_use_mkldnn'] = '0'
+os.environ['PADDLE_DISABLE_MKLDNN'] = '1'
+
 import numpy as np
 import pillow_heif
 from fastapi import FastAPI, File, HTTPException, UploadFile
