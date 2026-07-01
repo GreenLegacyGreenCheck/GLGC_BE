@@ -31,10 +31,18 @@ export type AiActionOutput = {
   reason: string;
 };
 
+type SelectedActionRaw = {
+  code: string;
+  reason: string;
+  carbonSavingExplanation: string;
+  costSavingExplanation: string;
+};
+
 export type AiInsightOutput = {
   aiSummary: string;
   aiEvidenceBullets: { text: string; isPositive: boolean }[];
   actionReasons: Record<string, string>;
+  selectedActions: SelectedActionRaw[];
   actions: AiActionOutput[];
 };
 
@@ -53,7 +61,20 @@ export function isAiInsightInput(value: unknown): value is AiInsightInput {
   );
 }
 
-function buildPrompt(input: AiInsightInput): string {
+function buildPrompt(
+  input: AiInsightInput,
+  availableActions: Array<{
+    code: string;
+    title: string;
+    description: string;
+    difficulty: string;
+    costLabel: string;
+    reductionRateMin: number;
+    reductionRateMax: number;
+  }>,
+): string {
+  const annualKg = input.annualEmissionTons * 1000;
+
   const factorsText = input.rankedFactors
     .map(
       (f) =>
@@ -61,8 +82,11 @@ function buildPrompt(input: AiInsightInput): string {
     )
     .join('\n');
 
-  const actionsText = input.actions
-    .map((a) => `- ${a.code}: ${a.title}`)
+  const actionsText = availableActions
+    .map(
+      (a) =>
+        `- ${a.code}: ${a.title} | 난이도: ${a.difficulty} | 비용: ${a.costLabel} | 절감범위: ${Math.round(a.reductionRateMin * annualKg)}~${Math.round(a.reductionRateMax * annualKg)}kg/년`,
+    )
     .join('\n');
 
   return `당신은 소상공인 탄소 배출 분석 전문가입니다.
@@ -70,29 +94,36 @@ function buildPrompt(input: AiInsightInput): string {
 아래 데이터를 바탕으로 분석 결과를 작성해주세요.
 
 [진단 데이터]
-- 연간 탄소 배출량: ${input.annualEmissionTons}t CO₂e (등급: ${input.grade})
+- 연간 탄소 배출량: ${input.annualEmissionTons.toFixed(3)}t CO₂e (등급: ${input.grade})
 - 전기 기여 비율: ${input.elecRatioPercent.toFixed(1)}%
 - 가스 기여 비율: ${input.gasRatioPercent.toFixed(1)}%
 - 전국 평균 대비: ${input.diffVsNationalPercent > 0 ? '+' : ''}${input.diffVsNationalPercent.toFixed(1)}%
 - 동종업 평균 대비: ${input.diffVsIndustryPercent > 0 ? '+' : ''}${input.diffVsIndustryPercent.toFixed(1)}%
 
-[주요 원인 요인]
+[주요 원인 요인 (XGBoost 분석)]
 ${factorsText}
 
-[추천 감축 액션]
+[선택 가능한 감축 액션 목록]
 ${actionsText}
+
+위 데이터를 근거로 이 업체에 가장 효과적인 액션을 반드시 3개 이상 선택하고, 각 액션을 추천하는 이유와 기대 효과를 설명하세요.
 
 다음 JSON 형식으로만 응답하세요 (마크다운 코드블록 없이 순수 JSON):
 {
-  "aiSummary": "이번 진단에서 가장 눈여겨봐야 할 한 줄 핵심 인사이트 (2문장 이내)",
+  "aiSummary": "이번 진단에서 가장 눈여겨봐야 할 핵심 인사이트 (2문장 이내, 구체적 수치 포함)",
   "aiEvidenceBullets": [
     {"text": "구체적인 수치 포함 근거 문장", "isPositive": true},
     {"text": "개선이 필요한 부분 근거 문장", "isPositive": false},
     {"text": "추가 근거 문장", "isPositive": true}
   ],
-  "actionReasons": {
-    "액션코드": "이 액션을 추천하는 이유 (위 SHAP 데이터 기반, 1-2문장)"
-  }
+  "selectedActions": [
+    {
+      "code": "액션코드",
+      "reason": "이 업체의 XGBoost 분석 결과를 근거로 이 액션을 추천하는 이유 (1-2문장, 구체적 수치 포함)",
+      "carbonSavingExplanation": "예상 탄소 절감량과 그 근거 (예: 전기 사용량의 X%를 차지하는 조명을 교체하면 연간 약 XXkg 절감)",
+      "costSavingExplanation": "예상 비용 절감과 그 근거 (예: 월 전기요금 약 X만원 절약 예상)"
+    }
+  ]
 }`;
 }
 
@@ -119,6 +150,7 @@ function parseAiResponse(raw: string): AiInsightOutput {
       isPositive: b.isPositive === true,
     }));
 
+  // 구버전 actionReasons 파싱 (하위 호환)
   const rawReasons =
     typeof parsed.actionReasons === 'object' && parsed.actionReasons !== null
       ? (parsed.actionReasons as Record<string, unknown>)
@@ -130,7 +162,37 @@ function parseAiResponse(raw: string): AiInsightOutput {
     }
   }
 
-  return { aiSummary, aiEvidenceBullets, actionReasons, actions: [] };
+  // 신버전 selectedActions 파싱
+  type SelectedAction = {
+    code: string;
+    reason: string;
+    carbonSavingExplanation: string;
+    costSavingExplanation: string;
+  };
+  const selectedActions: SelectedAction[] = Array.isArray(
+    parsed.selectedActions,
+  )
+    ? (parsed.selectedActions as unknown[])
+        .filter(
+          (a): a is Record<string, unknown> =>
+            typeof a === 'object' && a !== null,
+        )
+        .map((a) => ({
+          code: typeof a.code === 'string' ? a.code : '',
+          reason: typeof a.reason === 'string' ? a.reason : '',
+          carbonSavingExplanation:
+            typeof a.carbonSavingExplanation === 'string'
+              ? a.carbonSavingExplanation
+              : '',
+          costSavingExplanation:
+            typeof a.costSavingExplanation === 'string'
+              ? a.costSavingExplanation
+              : '',
+        }))
+        .filter((a) => a.code !== '')
+    : [];
+
+  return { aiSummary, aiEvidenceBullets, actionReasons, selectedActions, actions: [] };
 }
 
 @Injectable()
@@ -225,7 +287,21 @@ export class AiService {
   }
 
   async generateInsight(input: AiInsightInput): Promise<AiInsightOutput> {
-    const prompt = buildPrompt(input);
+    const annualKg = input.annualEmissionTons * 1000;
+
+    // DB에서 전체 액션 목록을 가져와 Gemini에 선택지로 제공한다.
+    const allDbActions = (await this.actionsService.findAll()) as Array<{
+      code: string;
+      icon: string | null;
+      title: string;
+      description: string;
+      difficulty: string;
+      costLabel: string;
+      reductionRateMin: number;
+      reductionRateMax: number;
+    }>;
+
+    const prompt = buildPrompt(input, allDbActions);
     let raw: string;
 
     try {
@@ -251,35 +327,55 @@ export class AiService {
       );
     }
 
-    // DB에서 액션 상세 정보를 조회해 Gemini reason과 합친다.
-    // reductionRateMin/Max는 0~1 비율이므로 연간 배출량 기준으로 kg 환산한다.
-    const annualKg = input.annualEmissionTons * 1000;
-    const codes = input.actions.map((a) => a.code);
-    const dbActions = await this.actionsService.findByCodes(codes);
+    // Gemini가 선택한 액션 코드로 DB 상세 정보를 조회해 합친다.
+    const selectedCodes = parsed.selectedActions.map((a) => a.code);
+    const dbActionMap = new Map(allDbActions.map((a) => [a.code, a]));
 
-    const actions: AiActionOutput[] = (
-      dbActions as Array<{
-        code: string;
-        icon: string | null;
-        title: string;
-        description: string;
-        difficulty: string;
-        costLabel: string;
-        reductionRateMin: number;
-        reductionRateMax: number;
-      }>
-    ).map((a) => ({
-      code: a.code,
-      icon: a.icon ?? null,
-      title: a.title,
-      description: a.description,
-      difficulty: a.difficulty,
-      costLabel: a.costLabel,
-      expectedMinKg: Math.round(a.reductionRateMin * annualKg),
-      expectedMaxKg: Math.round(a.reductionRateMax * annualKg),
-      reason: parsed.actionReasons[a.code] ?? '',
-    }));
+    const actions: AiActionOutput[] = parsed.selectedActions
+      .map((sel) => {
+        const db = dbActionMap.get(sel.code);
+        if (!db) return null;
+        return {
+          code: db.code,
+          icon: db.icon ?? null,
+          title: db.title,
+          description: db.description,
+          difficulty: db.difficulty,
+          costLabel: db.costLabel,
+          expectedMinKg: Math.round(db.reductionRateMin * annualKg),
+          expectedMaxKg: Math.round(db.reductionRateMax * annualKg),
+          reason: [
+            sel.reason,
+            sel.carbonSavingExplanation,
+            sel.costSavingExplanation,
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        };
+      })
+      .filter((a): a is AiActionOutput => a !== null);
 
+    // selectedCodes에 없는 코드는 actionReasons 폴백으로 채운다.
+    if (actions.length === 0 && Object.keys(parsed.actionReasons).length > 0) {
+      const fallbackCodes = Object.keys(parsed.actionReasons);
+      fallbackCodes.forEach((code) => {
+        const db = dbActionMap.get(code);
+        if (!db) return;
+        actions.push({
+          code: db.code,
+          icon: db.icon ?? null,
+          title: db.title,
+          description: db.description,
+          difficulty: db.difficulty,
+          costLabel: db.costLabel,
+          expectedMinKg: Math.round(db.reductionRateMin * annualKg),
+          expectedMaxKg: Math.round(db.reductionRateMax * annualKg),
+          reason: parsed.actionReasons[code] ?? '',
+        });
+      });
+    }
+
+    void selectedCodes; // 사용됨을 명시 (lint)
     return { ...parsed, actions };
   }
 }
