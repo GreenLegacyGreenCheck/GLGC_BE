@@ -48,4 +48,4 @@ prisma/generated
 ocr-service/.venv/
 ocr-service/__pycache__/
 ocr-service/*.pyc
-ocr-service/*
+ocr-service/.paddleocr/
