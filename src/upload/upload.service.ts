@@ -11,27 +11,39 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class UploadService {
-  private readonly s3: S3Client;
-  private readonly bucket: string;
+  private readonly s3: S3Client | null;
+  private readonly bucket: string | null;
 
   constructor(private readonly configService: ConfigService) {
     const region =
       this.configService.get<string>('AWS_REGION') ?? 'ap-northeast-2';
     const bucket = this.configService.get<string>('AWS_S3_BUCKET_NAME');
 
-    if (!bucket) {
-      throw new Error('AWS_S3_BUCKET_NAME이 설정되지 않았습니다.');
+    if (bucket) {
+      this.bucket = bucket;
+      this.s3 = new S3Client({
+        region,
+        credentials: {
+          accessKeyId:
+            this.configService.get<string>('AWS_ACCESS_KEY_ID') ?? '',
+          secretAccessKey:
+            this.configService.get<string>('AWS_SECRET_ACCESS_KEY') ?? '',
+        },
+      });
+    } else {
+      this.bucket = null;
+      this.s3 = null;
     }
+  }
 
-    this.bucket = bucket;
-    this.s3 = new S3Client({
-      region,
-      credentials: {
-        accessKeyId: this.configService.get<string>('AWS_ACCESS_KEY_ID') ?? '',
-        secretAccessKey:
-          this.configService.get<string>('AWS_SECRET_ACCESS_KEY') ?? '',
-      },
-    });
+  private requireS3(): { s3: S3Client; bucket: string } {
+    if (!this.s3 || !this.bucket) {
+      throw new HttpException(
+        'S3가 설정되지 않았습니다.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    return { s3: this.s3, bucket: this.bucket };
   }
 
   // 프론트엔드가 S3에 직접 PUT할 수 있는 Presigned URL 발급
@@ -40,28 +52,29 @@ export class UploadService {
     originalFilename: string,
     contentType: string,
   ): Promise<{ uploadUrl: string; key: string }> {
+    const { s3, bucket } = this.requireS3();
     const ext = originalFilename.split('.').pop() ?? 'jpg';
     const key = `bills/${randomUUID()}.${ext}`;
 
     const command = new PutObjectCommand({
-      Bucket: this.bucket,
+      Bucket: bucket,
       Key: key,
       ContentType: contentType,
     });
 
-    const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: 300 });
+    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
     return { uploadUrl, key };
   }
 
-  // OCR 서비스가 파일 버퍼를 요구하므로 S3에서 다운로드해서 반환한다.
   async downloadFileBuffer(
     key: string,
   ): Promise<{ buffer: Buffer; contentType: string }> {
-    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const { s3, bucket } = this.requireS3();
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
 
     let response: GetObjectCommandOutput;
     try {
-      response = await this.s3.send(command);
+      response = await s3.send(command);
     } catch {
       throw new HttpException(
         'S3에서 파일을 가져올 수 없습니다.',
