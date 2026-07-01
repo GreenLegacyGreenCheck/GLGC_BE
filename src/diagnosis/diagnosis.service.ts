@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ActionsService } from '../actions/actions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../push/push.service';
@@ -133,6 +137,14 @@ export class DiagnosisService {
     }
 
     return diagnosis;
+  }
+
+  async delete(id: string, userId: string) {
+    const diagnosis = await this.prisma.diagnosis.findUnique({ where: { id } });
+    if (!diagnosis) throw new NotFoundException('진단을 찾을 수 없습니다.');
+    if (diagnosis.userId !== userId)
+      throw new ForbiddenException('본인의 진단만 삭제할 수 있습니다.');
+    await this.prisma.diagnosis.delete({ where: { id } });
   }
 
   async getPolicyForAction(diagnosisId: string, actionCode: string) {

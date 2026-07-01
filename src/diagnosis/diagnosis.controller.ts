@@ -2,11 +2,18 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
+  UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ApiBody } from '@nestjs/swagger';
 import { AuthService } from '../auth/auth.service';
 import { DiagnosisService, isCreateDiagnosisInput } from './diagnosis.service';
@@ -56,5 +63,16 @@ export class DiagnosisController {
   @Get(':id/actions/:actionCode/policy')
   getPolicy(@Param('id') id: string, @Param('actionCode') actionCode: string) {
     return this.diagnosisService.getPolicyForAction(id, actionCode);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string } | undefined,
+  ) {
+    if (!user) throw new UnauthorizedException();
+    await this.diagnosisService.delete(id, user.id);
   }
 }
