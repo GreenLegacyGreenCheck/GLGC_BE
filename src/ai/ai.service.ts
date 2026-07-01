@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ActionsService } from '../actions/actions.service';
 
 export type RankedFactor = {
   factor: string;
@@ -18,10 +19,23 @@ export type AiInsightInput = {
   actions: { code: string; title: string }[];
 };
 
+export type AiActionOutput = {
+  code: string;
+  icon: string | null;
+  title: string;
+  description: string;
+  difficulty: string;
+  costLabel: string;
+  expectedMinKg: number;
+  expectedMaxKg: number;
+  reason: string;
+};
+
 export type AiInsightOutput = {
   aiSummary: string;
   aiEvidenceBullets: { text: string; isPositive: boolean }[];
   actionReasons: Record<string, string>;
+  actions: AiActionOutput[];
 };
 
 export function isAiInsightInput(value: unknown): value is AiInsightInput {
@@ -116,12 +130,15 @@ function parseAiResponse(raw: string): AiInsightOutput {
     }
   }
 
-  return { aiSummary, aiEvidenceBullets, actionReasons };
+  return { aiSummary, aiEvidenceBullets, actionReasons, actions: [] };
 }
 
 @Injectable()
 export class AiService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly actionsService: ActionsService,
+  ) {}
 
   private async callGeminiWithKey(
     apiKey: string,
@@ -211,7 +228,6 @@ export class AiService {
     const prompt = buildPrompt(input);
     let raw: string;
 
-    // Gemini 먼저 시도, 실패하면 Groq(무료)으로 폴백
     try {
       raw = await this.callGemini(prompt);
     } catch {
@@ -225,13 +241,45 @@ export class AiService {
       }
     }
 
+    let parsed: AiInsightOutput;
     try {
-      return parseAiResponse(raw);
+      parsed = parseAiResponse(raw);
     } catch {
       throw new HttpException(
         'AI 응답 형식을 처리할 수 없습니다.',
         HttpStatus.BAD_GATEWAY,
       );
     }
+
+    // DB에서 액션 상세 정보를 조회해 Gemini reason과 합친다.
+    // reductionRateMin/Max는 0~1 비율이므로 연간 배출량 기준으로 kg 환산한다.
+    const annualKg = input.annualEmissionTons * 1000;
+    const codes = input.actions.map((a) => a.code);
+    const dbActions = await this.actionsService.findByCodes(codes);
+
+    const actions: AiActionOutput[] = (
+      dbActions as Array<{
+        code: string;
+        icon: string | null;
+        title: string;
+        description: string;
+        difficulty: string;
+        costLabel: string;
+        reductionRateMin: number;
+        reductionRateMax: number;
+      }>
+    ).map((a) => ({
+      code: a.code,
+      icon: a.icon ?? null,
+      title: a.title,
+      description: a.description,
+      difficulty: a.difficulty,
+      costLabel: a.costLabel,
+      expectedMinKg: Math.round(a.reductionRateMin * annualKg),
+      expectedMaxKg: Math.round(a.reductionRateMax * annualKg),
+      reason: parsed.actionReasons[a.code] ?? '',
+    }));
+
+    return { ...parsed, actions };
   }
 }
