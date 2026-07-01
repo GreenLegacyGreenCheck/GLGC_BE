@@ -65,6 +65,14 @@ export class DiagnosisController {
     return this.diagnosisService.getPolicyForAction(id, actionCode);
   }
 
+  @Post(':id/actions/:actionCode/policy')
+  getPolicyWithReason(
+    @Param('id') id: string,
+    @Param('actionCode') actionCode: string,
+  ) {
+    return this.diagnosisService.getPolicyForAction(id, actionCode);
+  }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
