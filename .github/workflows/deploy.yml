@@ -1,0 +1,72 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: SSH Deploy → api.glgc.cloud
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          envs: >
+            DATABASE_URL,JWT_SECRET,JWT_EXPIRES_IN,
+            KAKAO_CLIENT_ID,KAKAO_CLIENT_SECRET,
+            GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,
+            GEMINI_API_KEY,GEMINI_API_KEY2,GEMINI_API_KEY3,
+            GROQ_API_KEY,XGBOOST_API_URL,RAG_API_URL,
+            VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY,VAPID_SUBJECT,
+            PUSH_BROADCAST_SECRET
+          script: |
+            set -e
+            cd ${{ secrets.EC2_APP_DIR }}
+
+            echo "📦 코드 최신화..."
+            git pull origin main
+
+            echo "📦 의존성 설치..."
+            pnpm install --frozen-lockfile
+
+            echo "🗃 DB 마이그레이션..."
+            npx prisma migrate deploy
+            npx prisma generate
+
+            echo "🔨 빌드..."
+            pnpm build
+
+            echo "🚀 서버 재시작 (pm2)..."
+            pm2 restart glgc-be || pm2 start dist/main.js --name glgc-be
+
+            echo "✅ 배포 완료 — https://api.glgc.cloud"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: 7d
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY2: ${{ secrets.GEMINI_API_KEY2 }}
+          GEMINI_API_KEY3: ${{ secrets.GEMINI_API_KEY3 }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          XGBOOST_API_URL: ${{ secrets.XGBOOST_API_URL }}
+          RAG_API_URL: https://glgc-rag.onrender.com
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: mailto:nojk0106@gmail.com
+          PUSH_BROADCAST_SECRET: ${{ secrets.PUSH_BROADCAST_SECRET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ap-northeast-2
+          AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}

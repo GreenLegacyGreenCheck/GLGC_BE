@@ -1,0 +1,101 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Action {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  title            String
+  description      String
+  icon             String?
+  category         String
+  cause            String
+  difficulty       String
+  costLabel        String
+  reductionRateMin Float
+  reductionRateMax Float
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  recommendedActions RecommendedAction[]
+}
+
+model Diagnosis {
+  id               String   @id @default(cuid())
+  userId           String?
+  user             User?    @relation(fields: [userId], references: [id])
+  target           String
+  electricityRatio Float
+  gasRatio         Float
+  targetEmissionKg Float
+  topFactors       Json
+  address          String?
+  usageKwh         Float?
+  gasUsageMj       Float?
+  billingMonth     String?
+  createdAt        DateTime @default(now())
+
+  recommendedActions RecommendedAction[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String?
+  provider     String   @default("local")
+  providerId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  diagnoses           Diagnosis[]
+  notificationSetting NotificationSetting?
+  pushSubscriptions   PushSubscription[]
+
+  @@unique([provider, providerId])
+}
+
+// Web Push 구독 정보 — 기기마다 하나씩 생성된다(한 유저가 여러 기기
+// 에서 구독하면 여러 레코드가 생길 수 있다).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}
+
+model NotificationSetting {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id])
+  diagnosisAlert Boolean @default(true)
+  weeklyReport   Boolean @default(true)
+  goalAlert      Boolean @default(false)
+  appUpdate      Boolean @default(false)
+}
+
+model RecommendedAction {
+  id            String    @id @default(cuid())
+  diagnosisId   String
+  diagnosis     Diagnosis @relation(fields: [diagnosisId], references: [id])
+  actionId      String
+  action        Action    @relation(fields: [actionId], references: [id])
+  expectedMinKg Float
+  expectedMaxKg Float
+  createdAt     DateTime  @default(now())
+
+  @@unique([diagnosisId, actionId])
+}
