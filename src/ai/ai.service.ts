@@ -19,6 +19,13 @@ export type AiInsightInput = {
   actions: { code: string; title: string }[];
 };
 
+export type AiActionScenario = {
+  beforeText: string;
+  afterText: string;
+  reductionGoalText: string;
+  costSavingText: string;
+};
+
 export type AiActionOutput = {
   code: string;
   icon: string | null;
@@ -29,6 +36,14 @@ export type AiActionOutput = {
   expectedMinKg: number;
   expectedMaxKg: number;
   reason: string;
+  scenario: AiActionScenario | null;
+};
+
+type ActionScenario = {
+  beforeText: string;
+  afterText: string;
+  reductionGoalText: string;
+  costSavingText: string;
 };
 
 type SelectedActionRaw = {
@@ -36,6 +51,7 @@ type SelectedActionRaw = {
   reason: string;
   carbonSavingExplanation: string;
   costSavingExplanation: string;
+  scenario: ActionScenario | null;
 };
 
 export type AiInsightOutput = {
@@ -121,7 +137,13 @@ ${actionsText}
       "code": "액션코드",
       "reason": "이 업체의 XGBoost 분석 결과를 근거로 이 액션을 추천하는 이유 (1-2문장, 구체적 수치 포함)",
       "carbonSavingExplanation": "예상 탄소 절감량과 그 근거 (예: 전기 사용량의 X%를 차지하는 조명을 교체하면 연간 약 XXkg 절감)",
-      "costSavingExplanation": "예상 비용 절감과 그 근거 (예: 월 전기요금 약 X만원 절약 예상)"
+      "costSavingExplanation": "예상 비용 절감과 그 근거 (예: 월 전기요금 약 X만원 절약 예상)",
+      "scenario": {
+        "beforeText": "현재 상황을 한 문장으로 (예: 전기 조명이 전체 소비전력의 30%를 차지하며 비효율적으로 운영 중)",
+        "afterText": "이 액션 실행 후 개선된 모습을 한 문장으로 (예: LED 교체 후 조명 전력 소비 80% 감소, 연간 XXkg CO₂ 절감)",
+        "reductionGoalText": "절감 목표 한 줄 요약 (예: 연간 XXkg CO₂ 절감)",
+        "costSavingText": "비용 절감 한 줄 요약 (예: 월 X만원 전기요금 절약)"
+      }
     }
   ]
 }`;
@@ -163,13 +185,7 @@ function parseAiResponse(raw: string): AiInsightOutput {
   }
 
   // 신버전 selectedActions 파싱
-  type SelectedAction = {
-    code: string;
-    reason: string;
-    carbonSavingExplanation: string;
-    costSavingExplanation: string;
-  };
-  const selectedActions: SelectedAction[] = Array.isArray(
+  const selectedActions: SelectedActionRaw[] = Array.isArray(
     parsed.selectedActions,
   )
     ? (parsed.selectedActions as unknown[])
@@ -177,18 +193,45 @@ function parseAiResponse(raw: string): AiInsightOutput {
           (a): a is Record<string, unknown> =>
             typeof a === 'object' && a !== null,
         )
-        .map((a) => ({
-          code: typeof a.code === 'string' ? a.code : '',
-          reason: typeof a.reason === 'string' ? a.reason : '',
-          carbonSavingExplanation:
-            typeof a.carbonSavingExplanation === 'string'
-              ? a.carbonSavingExplanation
-              : '',
-          costSavingExplanation:
-            typeof a.costSavingExplanation === 'string'
-              ? a.costSavingExplanation
-              : '',
-        }))
+        .map((a) => {
+          const rawScenario =
+            typeof a.scenario === 'object' && a.scenario !== null
+              ? (a.scenario as Record<string, unknown>)
+              : null;
+          const scenario: ActionScenario | null = rawScenario
+            ? {
+                beforeText:
+                  typeof rawScenario.beforeText === 'string'
+                    ? rawScenario.beforeText
+                    : '',
+                afterText:
+                  typeof rawScenario.afterText === 'string'
+                    ? rawScenario.afterText
+                    : '',
+                reductionGoalText:
+                  typeof rawScenario.reductionGoalText === 'string'
+                    ? rawScenario.reductionGoalText
+                    : '',
+                costSavingText:
+                  typeof rawScenario.costSavingText === 'string'
+                    ? rawScenario.costSavingText
+                    : '',
+              }
+            : null;
+          return {
+            code: typeof a.code === 'string' ? a.code : '',
+            reason: typeof a.reason === 'string' ? a.reason : '',
+            carbonSavingExplanation:
+              typeof a.carbonSavingExplanation === 'string'
+                ? a.carbonSavingExplanation
+                : '',
+            costSavingExplanation:
+              typeof a.costSavingExplanation === 'string'
+                ? a.costSavingExplanation
+                : '',
+            scenario,
+          };
+        })
         .filter((a) => a.code !== '')
     : [];
 
@@ -351,6 +394,7 @@ export class AiService {
           ]
             .filter(Boolean)
             .join('\n\n'),
+          scenario: sel.scenario,
         };
       })
       .filter((a): a is AiActionOutput => a !== null);
@@ -371,6 +415,7 @@ export class AiService {
           expectedMinKg: Math.round(db.reductionRateMin * annualKg),
           expectedMaxKg: Math.round(db.reductionRateMax * annualKg),
           reason: parsed.actionReasons[code] ?? '',
+          scenario: null,
         });
       });
     }
