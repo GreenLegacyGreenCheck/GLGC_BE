@@ -24,6 +24,10 @@ export type AiActionScenario = {
   afterText: string;
   reductionGoalText: string;
   costSavingText: string;
+  evidenceText: string;
+  projectedTons: number | null;
+  percentReduction: number | null;
+  estimatedMonthlySavingsWon: number | null;
 };
 
 export type AiActionOutput = {
@@ -39,19 +43,12 @@ export type AiActionOutput = {
   scenario: AiActionScenario | null;
 };
 
-type ActionScenario = {
-  beforeText: string;
-  afterText: string;
-  reductionGoalText: string;
-  costSavingText: string;
-};
-
 type SelectedActionRaw = {
   code: string;
   reason: string;
   carbonSavingExplanation: string;
   costSavingExplanation: string;
-  scenario: ActionScenario | null;
+  scenario: AiActionScenario | null;
 };
 
 export type AiInsightOutput = {
@@ -105,9 +102,15 @@ function buildPrompt(
     )
     .join('\n');
 
-  return `당신은 소상공인 탄소 배출 분석 전문가입니다.
-반드시 한국어로만 답변하세요. 영어나 다른 언어를 절대 섞지 마세요.
-아래 데이터를 바탕으로 분석 결과를 작성해주세요.
+  return `당신은 소상공인 탄소 배출 전문 상담사입니다.
+
+【언어 규칙 - 절대 위반 금지】
+- 모든 답변을 순수한 한국어로만 작성하세요.
+- 영어 단어, 한자, 일본어, 특수기호(CO₂·tCO₂e 등 단위 제외)를 절대 사용하지 마세요.
+- "LED", "kWh", "CO₂" 같은 기술 용어는 그대로 사용해도 됩니다.
+- 그 외 모든 단어는 반드시 한국어로 번역해 사용하세요.
+
+아래 데이터를 분석해 결과를 작성하세요.
 
 [진단 데이터]
 - 연간 탄소 배출량: ${input.annualEmissionTons.toFixed(3)}t CO₂e (등급: ${input.grade})
@@ -116,33 +119,41 @@ function buildPrompt(
 - 전국 평균 대비: ${input.diffVsNationalPercent > 0 ? '+' : ''}${input.diffVsNationalPercent.toFixed(1)}%
 - 동종업 평균 대비: ${input.diffVsIndustryPercent > 0 ? '+' : ''}${input.diffVsIndustryPercent.toFixed(1)}%
 
-[주요 원인 요인 (XGBoost 분석)]
+[주요 원인 요인 (XGBoost 분석 결과)]
 ${factorsText}
 
 [선택 가능한 감축 액션 목록]
 ${actionsText}
 
-위 데이터를 근거로 이 업체에 가장 효과적인 액션을 반드시 3개 이상 선택하고, 각 액션을 추천하는 이유와 기대 효과를 설명하세요.
+위 XGBoost 분석 수치를 직접 인용해 이 업체에 가장 효과적인 액션을 반드시 3개 이상 선택하고 설명하세요.
+각 설명에는 반드시 위 수치(비율, kg, %)를 구체적으로 인용해야 합니다.
+scenario.projectedTons: 이 액션 실행 후 예상 연간 탄소 배출량 (tCO2e, 소수점 둘째 자리)
+scenario.percentReduction: 현재 대비 절감 비율 (%, 소수점 첫째 자리)
+scenario.estimatedMonthlySavingsWon: 예상 월간 전기요금 절감액 (원 단위 정수, 예: 15000)
 
 다음 JSON 형식으로만 응답하세요 (마크다운 코드블록 없이 순수 JSON):
 {
-  "aiSummary": "이번 진단에서 가장 눈여겨봐야 할 핵심 인사이트 (2문장 이내, 구체적 수치 포함)",
+  "aiSummary": "핵심 인사이트 2문장 이내 (위 수치 직접 인용, 순수 한국어)",
   "aiEvidenceBullets": [
-    {"text": "구체적인 수치 포함 근거 문장", "isPositive": true},
-    {"text": "개선이 필요한 부분 근거 문장", "isPositive": false},
-    {"text": "추가 근거 문장", "isPositive": true}
+    {"text": "XGBoost 수치를 인용한 근거 문장 (순수 한국어)", "isPositive": true},
+    {"text": "개선 필요 항목 근거 문장 (순수 한국어)", "isPositive": false},
+    {"text": "추가 근거 문장 (순수 한국어)", "isPositive": true}
   ],
   "selectedActions": [
     {
       "code": "액션코드",
-      "reason": "이 업체의 XGBoost 분석 결과를 근거로 이 액션을 추천하는 이유 (1-2문장, 구체적 수치 포함)",
-      "carbonSavingExplanation": "예상 탄소 절감량과 그 근거 (예: 전기 사용량의 X%를 차지하는 조명을 교체하면 연간 약 XXkg 절감)",
-      "costSavingExplanation": "예상 비용 절감과 그 근거 (예: 월 전기요금 약 X만원 절약 예상)",
+      "reason": "이 업체 XGBoost 분석 수치를 직접 인용한 추천 이유 (예: 전기 기여 비율이 XX%로 동종업 대비 XX% 높기 때문에...) 순수 한국어 1-2문장",
+      "carbonSavingExplanation": "탄소 절감량 근거 (위 절감범위 수치 인용, 순수 한국어)",
+      "costSavingExplanation": "비용 절감 근거 (순수 한국어)",
       "scenario": {
-        "beforeText": "현재 상황을 한 문장으로 (예: 전기 조명이 전체 소비전력의 30%를 차지하며 비효율적으로 운영 중)",
-        "afterText": "이 액션 실행 후 개선된 모습을 한 문장으로 (예: LED 교체 후 조명 전력 소비 80% 감소, 연간 XXkg CO₂ 절감)",
-        "reductionGoalText": "절감 목표 한 줄 요약 (예: 연간 XXkg CO₂ 절감)",
-        "costSavingText": "비용 절감 한 줄 요약 (예: 월 X만원 전기요금 절약)"
+        "beforeText": "현재 상황 한 문장 (위 수치 인용, 순수 한국어)",
+        "afterText": "이 액션 실행 후 개선 모습 한 문장 (절감 kg 수치 포함, 순수 한국어)",
+        "reductionGoalText": "절감 목표 요약 (예: 연간 XXkg 탄소 절감, 순수 한국어)",
+        "costSavingText": "비용 절감 요약 (예: 월 전기요금 약 X만원 절약, 순수 한국어)",
+        "evidenceText": "XGBoost 원인 분석 수치(주요 요인 비율·동종업 비교 등)를 직접 인용해 이 액션이 왜 효과적인지 2-3문장 (순수 한국어)",
+        "projectedTons": 1.23,
+        "percentReduction": 21.7,
+        "estimatedMonthlySavingsWon": 15000
       }
     }
   ]
@@ -198,7 +209,7 @@ function parseAiResponse(raw: string): AiInsightOutput {
             typeof a.scenario === 'object' && a.scenario !== null
               ? (a.scenario as Record<string, unknown>)
               : null;
-          const scenario: ActionScenario | null = rawScenario
+          const scenario: AiActionScenario | null = rawScenario
             ? {
                 beforeText:
                   typeof rawScenario.beforeText === 'string'
@@ -216,6 +227,22 @@ function parseAiResponse(raw: string): AiInsightOutput {
                   typeof rawScenario.costSavingText === 'string'
                     ? rawScenario.costSavingText
                     : '',
+                evidenceText:
+                  typeof rawScenario.evidenceText === 'string'
+                    ? rawScenario.evidenceText
+                    : '',
+                projectedTons:
+                  typeof rawScenario.projectedTons === 'number'
+                    ? rawScenario.projectedTons
+                    : null,
+                percentReduction:
+                  typeof rawScenario.percentReduction === 'number'
+                    ? rawScenario.percentReduction
+                    : null,
+                estimatedMonthlySavingsWon:
+                  typeof rawScenario.estimatedMonthlySavingsWon === 'number'
+                    ? rawScenario.estimatedMonthlySavingsWon
+                    : null,
               }
             : null;
           return {
