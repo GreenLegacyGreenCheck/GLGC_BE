@@ -50,7 +50,7 @@ export class OcrService {
     formData.append('message', message);
     formData.append(
       'file',
-      new Blob([file.buffer], { type: file.mimetype }),
+      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
       file.originalname,
     );
 
