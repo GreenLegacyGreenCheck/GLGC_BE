@@ -32,6 +32,7 @@
 | Programming Language | <img src="https://img.shields.io/badge/typescript-3178C6?style=for-the-badge&logo=typescript&logoColor=white"/>                                                                                          | 정적 타입을 제공하여 코드의 안정성과 가독성을 높이고, 개발 중 오류를 사전에 방지할 수 있어 유지보수에 유리 |
 | ORM                  | <img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white">                                                                                                  | 스키마 기반 타입 안전성과 직관적인 마이그레이션 관리로 DB 작업 시 런타임 오류를 줄일 수 있음             |
 | Database             | <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white">                                                                                          | 오픈소스 생태계와 Prisma 지원이 가장 대중적인 관계형 DB로, 안정성과 확장성이 검증됨                      |
+| OCR                  | <img src="https://img.shields.io/badge/PaddleOCR-0062FF?style=for-the-badge">                                                                                                                            | PP-OCRv5 한국어 인식 모델을 공식 지원해, 고지서 한글/숫자 혼합 텍스트 인식 정확도가 검증됨               |
 | Package Manager      | <img src="https://img.shields.io/badge/pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white">                                                                                                       | 빠른 설치 속도와 디스크 공간을 절약하는 효율적인 의존성 관리로 프로젝트 환경 설정에 용이                 |
 | Formatting           | <img src="https://img.shields.io/badge/eslint-4B32C3?style=for-the-badge&logo=eslint&logoColor=white"> <img src="https://img.shields.io/badge/prettier-000000?style=for-the-badge&logo=prettier&logoColor=F7B93E"> | 코드 스타일을 통일하고 잠재적인 오류를 사전에 방지하여 협업 시 효율성을 높임                             |
 | Testing              | <img src="https://img.shields.io/badge/Jest-C21325?style=for-the-badge&logo=jest&logoColor=white">                                                                                                      | NestJS 공식 권장 테스트 러너로, 단위/E2E 테스트를 별도 설정 없이 바로 사용 가능                          |
@@ -88,6 +89,37 @@ npx prisma studio # DB GUI 실행
 
 - 스키마는 `prisma/schema.prisma`에서 관리합니다.
 - Prisma Client는 `src/generated/prisma`에 생성되며, git에는 포함되지 않습니다 (`pnpm install` 또는 스키마 변경 후 `npx prisma generate`로 생성).
+
+<br>
+
+## 🧾 OCR (고지서 인식)
+
+`POST /ocr/bill`은 NestJS가 직접 OCR을 하지 않고, `ocr-service/`의 Python(FastAPI + PaddleOCR PP-OCRv5, 한국어 인식 모델) 마이크로서비스에 내부적으로 요청을 전달(forward)하는 구조입니다. 그래서 로컬에서는 **두 프로세스를 같이 띄워야** 동작합니다.
+
+- **최초 1회 설정**
+
+```
+cd ocr-service
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+```
+
+- **실행 (터미널 2개)**
+
+```
+# 1) OCR 마이크로서비스 (ocr-service/, 기본 포트 8000)
+cd ocr-service && ./.venv/bin/uvicorn main:app --port 8000
+
+# 2) NestJS (GLGC-BE/, 기본 포트 4000)
+pnpm run start:dev
+```
+
+- NestJS는 `.env`의 `OCR_SERVICE_URL`(기본값 `http://127.0.0.1:8000`)로 OCR 서비스를 호출합니다.
+- 요청: `multipart/form-data`, 필드명 `image`. 응답: `{ text, confidence, words: [{ text, confidence }] }`.
+- 처리 흐름: ① 전체 페이지 detection+recognition → ② "당월/사용량/전기료/가스료/kWh/m³" 키워드가 포함된 줄만 패딩 포함 크롭 → ③ 그 크롭만 2.5배 업스케일 후 재인식 → ④ 해당 줄의 텍스트만 결과에 덮어쓰기.
+- **전체 페이지**에는 그레이스케일/대비/업스케일 같은 전처리를 걸지 않습니다 — 한글 라벨이 깨지는 현상이 확인되어, 숫자+단위 위주인 좁은 크롭 영역에만 한정합니다.
+- HEIC는 `pillow-heif`로 서버에서도 디코딩되지만, 클라이언트가 이미 PNG로 변환해 보내는 게 기본 경로입니다.
+- 모델은 최초 실행 시 자동 다운로드됩니다 (`~/.paddlex/official_models/`).
 
 <br>
 
@@ -194,10 +226,17 @@ develop ← 작업 브랜치
 
 ```
 📦GLGC_BE
+ ┣ 📂ocr-service          (Python FastAPI + PaddleOCR 마이크로서비스)
+ ┃ ┣ 📜main.py
+ ┃ ┗ 📜requirements.txt
  ┣ 📂prisma
  ┃ ┗ 📜schema.prisma
  ┣ 📂src
  ┃ ┣ 📂generated         (Prisma Client 자동 생성 - git 미포함)
+ ┃ ┣ 📂ocr
+ ┃ ┃ ┣ 📜ocr.controller.ts
+ ┃ ┃ ┣ 📜ocr.module.ts
+ ┃ ┃ ┗ 📜ocr.service.ts
  ┃ ┣ 📂prisma
  ┃ ┃ ┣ 📜prisma.module.ts
  ┃ ┃ ┗ 📜prisma.service.ts
@@ -222,8 +261,10 @@ develop ← 작업 브랜치
  ┗ 📜tsconfig.json
 ```
 
+- ocr-service - PaddleOCR PP-OCRv5(한국어) 기반 OCR 마이크로서비스 (NestJS가 내부 호출)
 - prisma - `schema.prisma`에 DB 모델 정의, 마이그레이션 파일 관리
 - src
   - generated/prisma - `prisma generate`로 자동 생성되는 Prisma Client (직접 수정 X)
+  - ocr - `POST /ocr/bill` 컨트롤러, `ocr-service`로 멀티파트 요청을 전달하는 서비스
   - prisma - 전역으로 주입되는 `PrismaService` / `PrismaModule`
   - (추후 기능이 늘어나면 도메인별로 `*.module.ts` / `*.controller.ts` / `*.service.ts`를 `src` 하위에 추가)
