@@ -14,7 +14,7 @@ export class RagController {
       example: {
         new_data: [
           {
-            cause: '비효율 조명 사용',
+            cause: '절약시설 부재',
             name: '소상공인 에너지효율화 지원사업',
             url: 'https://example.com/program',
             target: '소상공인',

@@ -1,8 +1,17 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+export const RAG_CAUSES = [
+  '절약시설 부재',
+  '단열 불량',
+  '운영 습관',
+  '냉방설비 노후화',
+] as const;
+
+export type RagCause = (typeof RAG_CAUSES)[number];
+
 export type RagPolicyItem = {
-  cause: string;
+  cause: RagCause;
   name: string;
   url: string;
   target: string;
@@ -20,7 +29,7 @@ export function isRagPolicyItem(value: unknown): value is RagPolicyItem {
   if (typeof value !== 'object' || value === null) return false;
   const item = value as Record<string, unknown>;
   return (
-    typeof item.cause === 'string' &&
+    RAG_CAUSES.includes(item.cause as RagCause) &&
     typeof item.name === 'string' &&
     typeof item.url === 'string' &&
     typeof item.target === 'string' &&
