@@ -36,6 +36,10 @@ export class UploadService {
     }
   }
 
+  isAvailable(): boolean {
+    return this.s3 !== null && this.bucket !== null;
+  }
+
   private requireS3(): { s3: S3Client; bucket: string } {
     if (!this.s3 || !this.bucket) {
       throw new HttpException(

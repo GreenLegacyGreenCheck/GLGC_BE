@@ -1,4 +1,10 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  NotFoundException,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { UploadService } from './upload.service';
 
@@ -31,6 +37,10 @@ export class UploadController {
       throw new BadRequestException(
         '허용되지 않는 파일 형식입니다. (jpeg·png·webp·heic·pdf만 가능)',
       );
+    }
+
+    if (!this.uploadService.isAvailable()) {
+      throw new NotFoundException('S3가 설정되지 않았습니다.');
     }
 
     return this.uploadService.createPresignedUploadUrl(filename, contentType);
