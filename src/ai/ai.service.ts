@@ -32,6 +32,7 @@ export type AiActionScenario = {
   projectedAnnualCostWon: number | null;
   annualSavingsWon: number | null;
   costEvidenceText: string;
+  projectedTonsByDegree: { '1': number; '2': number; '3': number } | null;
 };
 
 export type AiActionOutput = {
@@ -138,6 +139,7 @@ scenario.currentAnnualCostWon: 현재 연간 전기요금 추정액 (원 단위 
 scenario.projectedAnnualCostWon: 이 액션 실행 후 예상 연간 전기요금 (원 단위 정수)
 scenario.annualSavingsWon: 연간 절감 예상액 = currentAnnualCostWon - projectedAnnualCostWon (원 단위 정수)
 scenario.costEvidenceText: 위 비용 추산 근거 한 문장 (어떤 수치를 어떻게 계산했는지, 순수 한국어)
+scenario.projectedTonsByDegree: 기후 온난화 시나리오별 이 액션 실행 후 예상 연간 배출량 (tCO2e, 소수점 둘째 자리). "1"=지구 온도 1도 상승 시, "2"=2도 상승 시, "3"=3도 상승 시. 냉방 관련 액션은 온도 높을수록 냉방 부하 증가로 수치가 커짐. 냉방 무관 액션도 기후 영향을 반영해 3개 모두 제시.
 
 다음 JSON 형식으로만 응답하세요 (마크다운 코드블록 없이 순수 JSON):
 {
@@ -165,7 +167,8 @@ scenario.costEvidenceText: 위 비용 추산 근거 한 문장 (어떤 수치를
         "currentAnnualCostWon": 624000,
         "projectedAnnualCostWon": 520000,
         "annualSavingsWon": 104000,
-        "costEvidenceText": "현재 전기 사용량과 요금 단가를 기준으로 추정한 연간 전기요금이며, 이 액션 실행 시 절감 비율을 적용해 예상 절감액을 산출했습니다."
+        "costEvidenceText": "현재 전기 사용량과 요금 단가를 기준으로 추정한 연간 전기요금이며, 이 액션 실행 시 절감 비율을 적용해 예상 절감액을 산출했습니다.",
+        "projectedTonsByDegree": {"1": 1.18, "2": 1.23, "3": 1.31}
       }
     }
   ]
@@ -271,6 +274,19 @@ function parseAiResponse(raw: string): AiInsightOutput {
                   typeof rawScenario.costEvidenceText === 'string'
                     ? rawScenario.costEvidenceText
                     : '',
+                projectedTonsByDegree: (() => {
+                  const d = rawScenario.projectedTonsByDegree;
+                  if (typeof d !== 'object' || d === null) return null;
+                  const r = d as Record<string, unknown>;
+                  if (
+                    typeof r['1'] === 'number' &&
+                    typeof r['2'] === 'number' &&
+                    typeof r['3'] === 'number'
+                  ) {
+                    return { '1': r['1'], '2': r['2'], '3': r['3'] };
+                  }
+                  return null;
+                })(),
               }
             : null;
           return {
