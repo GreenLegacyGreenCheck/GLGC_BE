@@ -149,16 +149,22 @@ export class DiagnosisService {
 
   async getPolicyForAction(diagnosisId: string, actionCode: string) {
     const diagnosis = await this.findById(diagnosisId);
-    const recommended = diagnosis.recommendedActions.find(
-      (recommendedAction) => recommendedAction.action.code === actionCode,
+
+    // 진단의 recommendedActions에서 먼저 찾고, 없으면 DB에서 직접 조회한다.
+    // Gemini가 전체 액션 풀에서 자율 추천하므로 diagnosis에 없는 액션도 허용한다.
+    const fromRecommended = diagnosis.recommendedActions.find(
+      (r) => r.action.code === actionCode,
     );
 
-    if (!recommended) {
-      throw new NotFoundException('해당 진단에 추천된 액션이 아닙니다.');
+    const action = fromRecommended?.action
+      ?? await this.actionsService.findByCodes([actionCode]).then((list) => list[0] ?? null);
+
+    if (!action) {
+      throw new NotFoundException('존재하지 않는 액션 코드입니다.');
     }
 
     return this.ragService.recommend({
-      cause: recommended.action.cause,
+      cause: action.cause,
       target: diagnosis.target,
     });
   }
