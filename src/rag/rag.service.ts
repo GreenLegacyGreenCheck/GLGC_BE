@@ -89,10 +89,17 @@ export class RagService {
     return response.json();
   }
 
-  // RAG의 /recommend 응답 스키마는 아직 문서화되어 있지 않아 그대로 통과시킨다.
-  // 형태가 확정되면 타입 가드를 추가해 검증한다.
+  // userType → RAG target 매핑
+  private mapTarget(target: string): string {
+    if (target === '취약계층') return '기후취약계층';
+    return target; // 소상공인, 일반가구 그대로
+  }
+
   recommend(input: { cause: string; target: string }): Promise<unknown> {
-    return this.post('/recommend', input);
+    return this.post('/recommend', {
+      cause: input.cause,
+      target: this.mapTarget(input.target),
+    });
   }
 
   updateData(newData: RagPolicyItem[]): Promise<unknown> {
