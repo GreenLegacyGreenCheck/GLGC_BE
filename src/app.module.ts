@@ -8,6 +8,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { DiagnosisModule } from './diagnosis/diagnosis.module';
+import { BuildingModule } from './building/building.module';
+import { FormsModule } from './forms/forms.module';
 import { OcrModule } from './ocr/ocr.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RagModule } from './rag/rag.module';
@@ -30,6 +32,8 @@ import { XgboostModule } from './xgboost/xgboost.module';
     AuthModule,
     UsersModule,
     DiagnosisModule,
+    BuildingModule,
+    FormsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
